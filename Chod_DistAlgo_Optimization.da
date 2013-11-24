@@ -1,0 +1,628 @@
+import random
+import copy
+import time
+import math
+import hashlib
+
+#A node in the successor list
+class Node:
+    def __init__(n, num):
+        self.node = n
+        self.id = num
+
+    def __str__():
+        return (str(self.id))
+
+#A Finger is a entry in the finger table.
+class Finger:
+    def __init__(s, si, ei, p):
+        self.start = s
+        self.int_start = si
+        self.int_end =  ei
+        self.cnode = Node(-1, -1)
+        self.pnode = Node(-1, -1)
+        self.parent = p
+
+    def __str__():
+        return (str("Finger:") + str(self.parent) + ", " + str(self.start) + ", " + str(self.int_start) + ", " + str(self.int_end) + ", " + str(self.cnode) + ", " +      str(self.node.id))
+
+#Driver program runs in this process/context. This driver is reponsible for
+#issuing requests like key-lookup, key-insert, node-insert, node-remove, node-recover.
+#This basically can run a test case.
+class Driver(DistProcess):
+    def setup(ps, v, m):
+        s = ps
+        visual = v
+        max_procs = int(math.pow(2, m))
+
+    #Join a node to the ring. Expects n_id to be the hashed value, which acts as node id.
+    #Equilavent to helper.join(n, n_id)
+    # helper is the 1st node in the list. n_id is the integer id of the node. n is the object corresponding to that node
+
+    #Join a node to the ring. Computes n_id from ip_address of node.
+    #Equilavent to helper.join(n)
+    def node_join(n, n_id, helper):
+        if(n_id == -1):
+        	h = hashlib.sha1((str(self)).encode('utf-8'))
+        	n_id = int(h.hexdigest(), 16) % max_procs
+        send(JoinRing(helper, n_id), n)
+
+    #Kill a node
+    def remove(n):
+        send(KillNode(), n)
+
+    #Receover a node
+    def recover(n):
+        send(RecoverNode(), n)
+
+    #Insert a key-value pair in the ring. It hashes the key to find the id.
+    #Equivalent to helper.insert_key(key, value)
+    def insert_key(key, value, id, helper):
+        if id == -1:
+        	h = hashlib.sha1((str(key)).encode('utf-8'))
+        	id = int(h.hexdigest(), 16) % max_procs
+ 
+        --insertkey
+        send(InsertKey(key, value, id, self), helper)
+
+        --waitforreturnvalue
+        await (any(received(ReturnValue(a1))))
+        ret = list(received(ReturnValue(a1)))[0]
+        purge_received() 
+        return ret
+
+
+    #Lookup a key-value pair in the ring. It hashes the key to find the id.
+    #Equivalent to val = helper.lookup(key)
+    def lookup(key, id, helper):
+        if id == -1:
+        	h = hashlib.sha1((str(key)).encode('utf-8'))
+        	id = int(h.hexdigest(), 16) % max_procs
+
+        --querykey
+        send(FindKey(key, id, self), helper)
+
+        --waitforvalue
+        await (any(received(Value(a1))))
+        val = list(received(Value(a1)))[0]
+        purge_received()
+        return val
+ 
+    def main():
+        procid = 0
+        unstarted_proc = 0
+        for p in ps:
+        	if procid == 6:
+        		procid = procid + 1
+        		unstarted_proc = p
+        		continue
+
+        	#WARNING: id should not collide with existing id. Undefined behavior if that happens.
+
+        	--joinnode
+        	# output("p =" + str(p) + "ps = " + str(ps) + "[0] = " + str(list(ps)[0]))
+        	# p is the 1st node in the list. ps is the integer id of the node. ps[0] is the object corresponding to that node
+        	#Join rest of the nodes
+        	# output("Node %s is joining the ring\n" % (str(procid)))
+        	if(procid == 0 or procid == 10 or procid == 19):
+        		node_join(p, procid, list(ps)[0])
+
+        	#Wait for each node to stabilize
+        	time.sleep(1)
+        	procid = procid + 1
+
+        ##################################################
+        #Kill node 4
+
+        --killnode
+        # remove(list(ps)[4])
+
+        ##################################################
+        #Wait for sometime
+
+        time.sleep(5)
+
+        ##################################################
+        #Now recover the failed node
+
+        --recovernode
+        # recover(list(ps)[4])
+
+        ##################################################
+        #Wait for stabilize
+        print("Driver is waiting to stabilize\n")
+        time.sleep(5)
+        send(PrintFingers(), ps)
+        print("Driver is inserting key\n")
+
+        ret = insert_key("Hello", "World", 6, list(ps)[0])
+        print("Return value is %s\n" % (str(ret)))
+
+        ret = insert_key("SBU", "SUNY", -1, list(ps)[0])
+        print("Return value is %s\n" % (str(ret)))
+
+        print("Driver is querying key\n")
+
+        val = lookup("Hello", 6, list(ps)[0])
+        print("Value is %s\n" % (str(val)))
+
+        val = lookup("SBU", -1, list(ps)[0])
+        print("Value is %s\n" % (str(val)))
+        send(PrintFingers(), ps)
+
+        ##################################################
+        #Join proc 6 now
+
+        time.sleep(1)
+        print("Joining process 6 which was skipped earlier")
+        --joinproc6
+        node_join(unstarted_proc, 6, list(ps)[0])
+        time.sleep(5) # Wait to stablilize and fixing of finger tables
+
+        ##################################################
+        #Query the previously inserted key in 6 which went in 7. Now should be found in 6
+        print("Query the previously inserted key in 6 which went in 7. Now should be found in 6")
+        --querykey
+        val = lookup("Hello", 6, list(ps)[0])
+        print("Value is %s\n" % (str(val)))
+
+        ##################################################
+        #Keep running
+
+        while(1):
+            time.sleep(1);
+
+#Each object of this class is a node in the network. Each node has a successor and a predecessor.
+#It also maintains a Y list of successors to deal with node failures. The keys and values are stored
+#in a dictionary kv_store. If the node is alive, then its corresponding flag is set to 1, however,
+#if the node is dead, it is set to -1. The finger table is a dictionary which stores the routing
+#information for quick lookup.
+class ChordNode(DistProcess):
+    #Setup
+    def setup(ps, d, v, m):
+        # output("setup ps = " + str(ps) + " driver = " + str(d))
+        proc_id = -1
+        successor = Node(-1, -1)
+        predecessor = Node(-1, -1)
+        helper = -1
+        proclist = ps
+        finger = dict()
+        kv_store = dict()
+        is_alive = 1
+        max_succ = int(math.pow(2, m))
+        max_pred = int(math.pow(2, m))
+        succ_list = dict()
+        pred_list = dict()
+        needs_join = False
+        driver = d
+        visual = v
+        max = int(math.pow(2, m) )
+
+    #Main
+    def main():
+        --waitforjoinreq
+        #output("waiting")
+        await (any(received(JoinRing(a1, a2))))
+        h, proc_id = list(received(JoinRing(a1, a2)))[0]
+        purge_received()
+        #output(" received join h = " + str(h) + "proc_id = " + str(proc_id))
+
+        init_node(h, proc_id)
+        #send(TestCallback(), visual)
+
+        needs_join = True
+        i = 0
+
+        while True:
+            if (is_alive == 1):
+                if (needs_join == True):
+                    join_ring()
+                    #output("Calling stabilize")
+                #print_fingers(proc_id)
+                Stabilize()
+                #print_fingers(proc_id)
+                fix_fingers()
+                #print_fingers(proc_id)
+                #await(False)
+                check_dead_nodes()
+                if i == 1000:
+                        print("------Node:(%s ,%s)  Successor:(%s ,%s)  Predecessor:(%s,%s)-----\n" % (str(self), str(proc_id), str(successor.node), str(successor.id), str(predecessor.node), str(predecessor.id)))
+                        #await(False)
+#                print_fingers(4)
+            else:
+                --nothingtodo
+                pass
+            i = i + 1
+
+    #Lookup for a (key,value) pair in the ring.
+    def OnFindKey(key, node_id, org):
+        print("In find key node_id=%s  procid=%s\n" % (str(node_id), str(proc_id)))
+
+        if (between(predecessor.id, node_id, proc_id) == True or node_id == proc_id):
+            if key in kv_store:
+                send(Value(kv_store[key]), org)
+            else:
+                send(Value(-1), org)
+            return
+
+        for i in range(m, 0, -1):
+            if (between(finger[i].int_start, node_id, finger[i].int_end) == True or node_id == finger[i].int_start):
+                succ_diff = abs(node_id - finger[i].cnode.id)
+                pred_diff = abs(node_id - finger[i].pnode.id)
+                output("node_id =" + str(node_id) + "succ_diff " + str(succ_diff) + "pred_diff " + str(pred_diff))
+                #await(False)
+                if(succ_diff <= pred_diff): 
+                        send(FindKey(key, node_id, org), finger[i].cnode.node)
+                else:
+                        send(FindKey(key, node_id, org), finger[i].pnode.node)
+                return
+
+        send(Value(-1), org)
+        return
+
+    #Insert a (key, value) pair in the ring
+    def OnInsertKey(key, val, node_id, org):
+        #print("In insert key node_id=%s  procid=%s\n" % (str(node_id), str(proc_id)))
+
+        #If this node is not yet joined, search the key in the node succeeding this node.
+        #If the key belongs to this node, then just insert it.
+        # output("predecessor id = " + str(predecessor.id) + " node_id = " + str(node_id) + " proc_id = " + str(proc_id))
+        if (between(predecessor.id, node_id, proc_id) == True or node_id == proc_id):
+            kv_store[key] = val
+            send(ReturnValue(True), org)
+            return
+
+        for i in range(m, 0, -1):
+            if (between(finger[i].int_start, node_id, finger[i].int_end) == True or node_id == finger[i].int_start):
+                send(InsertKey(key, val, node_id, org), finger[i].cnode.node)
+                return
+
+        send(ReturnValue(False), org)
+        return
+
+    #Signal from the driver to indicate node failure
+    def OnKillNode():
+        print("I am getting killed proc_id%s\n" % ((str(proc_id))))
+        is_alive = -1
+
+    #Signal from the driver that the node is live back again
+    def OnRecoverNode():
+        print("I am getting recovered proc_id%s\n" % ((str(proc_id))))
+        is_alive = 1
+        needs_join = True
+
+    #Reblance the fingers. Send the belonging fingers.
+    def OnGetMyKeys(id):
+        fgr = dict()
+        temp = copy.deepcopy(kv_store)
+        for key in kv_store:
+            if key == "Hello":
+                    fgr[key] = kv_store[key]
+                    del temp[key]
+
+        kv_store = temp
+
+        if (len(fgr.keys()) > 0):
+            print("My kv_store is :")
+            print(kv_store)
+            send(YourKeys(frozenset(fgr.items())), _source)
+        else:
+            send(YourKeys(-1), _source)
+
+    def OnFindSuccessor(org, id, imm):
+        if imm == 1:
+        	send(Successor(successor), _source)
+        else:        
+        	if (between(proc_id, id, successor.id) == True or id == successor.id): # 'or' because of <= case
+            		send(Successor(successor), org)
+        	else:
+            		n0 = closest_preceding_node(id)
+            		if (n0.node == -1):
+                		send(Successor(Node(-1, -1)), org)
+            		elif (n0.node == self):
+                		send(Successor(successor), org)
+            		else:
+                		send(FindSuccessor(org, id, 0), n0.node)
+
+
+    def OnFindPredecessor(org, id, imm):
+        if imm == 1:
+                send(Predecessor(predecessor), _source)
+        else:
+        	if (between(proc_id, id, successor.id) == True or id == successor.id): # 'or' because of <= case
+            		send(Predecessor(predecessor), org)
+        	else:
+            		n0 = closest_preceding_node(id)
+            		if (n0.node == -1):
+                		send(Predecessor(Node(-1, -1)), org)
+            		elif (n0.node == self):
+                		#output("sending self itself")
+                		send(Predecessor(successor), org)
+            		else:
+                		send(FindPredecessor(org, id, 0), n0.node)
+
+
+
+    #Get the status of node as live or dead
+    def OnGetStatus():
+        send(Status(is_alive), _source)
+
+    #Notify a node about its predecessor
+    def OnNotify(id, n):
+        if predecessor.node == -1 or (between(predecessor.id, id, n) == True):
+            predecessor = Node(_source, id)
+
+    def OnPrintFingers():
+        for i in range(1,m+1):
+            if(proc_id == 0 or proc_id == 10 or proc_id == 19):
+           	#output("received print finger from driver")
+            	output("proc id = " + str(proc_id) + "finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id) + " predecessor = " + str(finger[i].pnode) + "pred id = " + str(finger[i].pnode.id))
+
+
+    #Initialize the node
+    def init_node(h, procid):
+        proc_id = procid
+        successor = Node(-1, -1)
+        predecessor = Node(-1, -1)
+        helper = h
+        finger = dict()
+        # Why do we need finger for all nodes when only few nodes have joined
+        for i in range(1, m+1):
+            finger[i] = Finger((int(math.pow(2, i-1)) + proc_id)%max, (int(math.pow(2, i-1)) + proc_id)%max, (int(math.pow(2, i)) + proc_id) %max, proc_id)
+            #print(str(finger['cnode']))
+            #output("finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id))
+            #output("finger = " + str(finger[i].cnode))
+        #print_fingers(procid)
+        #for p in finger:
+            #output("in init node. finger of " + str(p.cnode))
+    #Join the chord ring.
+    def join_ring():
+        if proc_id != 0:
+            # Doubt. Why are we again initializing pred = -1 here??. When a node is killed this is needed
+            predecessor = Node(-1, -1)
+            #output("predecessor = " + str(predecessor))
+            --start
+            #output("joining ring before sending rpc")
+            successor = rpc_find_successor(helper, proc_id, 0)
+            print("proc id = " + str(proc_id) + "successor = " + str(successor))
+
+            my_keys = rpc_get_my_keys(successor.node, proc_id)
+            kv_store.update(my_keys)
+            #print("New keys:")
+            #print(kv_store)
+        else:
+            successor = Node(self, 0)
+            predecessor = Node(self, 0)
+
+        needs_join = False
+
+    #Print the finger table entries corresponding to id
+    def print_fingers(id):
+        if proc_id == id or proc_id == 10 or proc_id == 19:
+                for i in range(1, m+1):
+                        output("finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id))
+
+    #Print the successor list corresponding to id
+    def print_successor_list(id):
+        if proc_id == id:
+            print("\n")
+            for i in range(0, max_succ):
+                print("Node %s: succ_list[%s].id = %s" % (str(id), str(i), str(succ_list[i].id)))
+
+    #Update/populate "max_succ" number of successors for this node
+    def update_successor_list():
+        #output("in update successor list " + str(successor))
+        s = successor
+        for i in range(0, max_succ):
+            if s.id != proc_id and s.id != -1:
+                #output("getting successors for " + str(s.node))                
+                s = rpc_find_successor(s.node, proc_id, 1)
+            succ_list[i] = s
+
+    #Update/populate "max_succ" number of successors for this node
+    def update_predecessor_list():
+        #output("in update successor list " + str(successor))
+        s = predecessor
+        for i in range(0, max_pred):
+            if s.id != proc_id and s.id != -1:
+                #output("getting successors for " + str(s.node))
+                s = rpc_find_predecessor(s.node, proc_id, 1)
+            pred_list[i] = s
+
+
+
+
+    #Check if node's predecessor or successor is dead. Change the predecessor and successor
+    #to skip this node. Basically, remove the dead node from the ring. This function is
+    #called priodically.
+    def check_dead_nodes():
+        if (predecessor.node != -1 and predecessor.node != self and rpc_is_node_alive(predecessor.node) != 1):
+            print("Predecessor %s of %s is dead" % ((str(predecessor.id), str(proc_id))))
+            predecessor = Node(-1, -1)
+
+        if (successor.node != -1 and successor.node != self and rpc_is_node_alive(successor.node) != 1):
+            print("Successor %s of %s is dead" % ((str(successor.id), str(proc_id))))
+            successor = next_live_successor()
+
+    #Find the next live successor from the successor list of the node. This is needed
+    #when a successor of node is dead and it needs to point to next successor.
+    def next_live_successor():
+        for i in range(0, max_succ):
+            if (succ_list[i].node == -1 or succ_list[i].node == self or rpc_is_node_alive(succ_list[i].node) == 1):
+                return succ_list[i]
+
+        return Node(-1, -1)
+
+    #Fix the finger table entries of this node. Called preiodically.
+    def fix_fingers():
+        for i in range(1, m+1):
+            #output("sending succ for " + str(finger[i].start))
+            finger[i].cnode = rpc_find_successor(helper, finger[i].start, 0)
+            finger[i].pnode = rpc_find_predecessor(helper, finger[i].start, 0)
+
+    #Find the next preceding node corresponding to 'id'
+    def closest_preceding_node(id):
+        for i in range(m, 0, -1):
+            if (between(proc_id, finger[i].cnode.id, id)):
+                    return finger[i].cnode
+
+        return Node(self, proc_id)
+
+    #A function which checks of y is between x and z
+    def between(x, y, z):
+        if (x == z):
+            return True
+
+        if (x < z):
+            if (x < y and y < z):
+                return True
+        else:
+            if (x < y or y < z):
+                return True
+
+        return False
+
+    #This function is called periodically by each node to stablize the ring
+    def Stabilize():
+        #print("proc_id " + str(proc_id) + "sending req to successor " + str(successor.node))
+        pred = rpc_find_predecessor(successor.node, proc_id, 1)
+        #output("prd = " + str(pred))
+
+        if (pred.id != -1 and between(proc_id, pred.id, successor.id) == True):
+            #output("aaha. hitting the loop")
+            successor = pred
+
+        --notify
+        send(Notify(proc_id, successor.id), successor.node)
+
+        update_successor_list()
+        update_predecessor_list()
+
+        --endfunc
+
+
+    #RPC to check if the node 'n' is alive
+    def rpc_is_node_alive(n):
+        --getstatus
+        send(GetStatus(), n)
+
+        --waitforstatus
+        await (any(received(Status(a1))))
+        st = list(received(Status(a1)))[0]
+        purge_received()
+        return st
+
+    #RPC to find the successor of a node 'nid'
+    def rpc_find_successor(helper, nid, imm):
+        --sendreq
+        send(FindSuccessor(self, nid, imm), helper)
+
+        --waitforreply
+        await (any(a1 for a1 in received(Successor(a1))))
+        s = list(received(Successor(a1)))[0]
+        purge_received()
+
+        return s
+
+    #RPC to find the successor of a node 'nid'
+    def rpc_find_predecessor(helper, nid, imm):
+        --sendreq
+        send(FindPredecessor(self, nid, imm), helper)
+
+        --waitforreply
+        await (any(a1 for a1 in received(Predecessor(a1))))
+        s = list(received(Predecessor(a1)))[0]
+        purge_received()
+
+        return s
+
+
+    #RPC to get keys from successor between node's id to successor's id
+    def rpc_get_my_keys(n, n_id):
+
+        d = dict()
+        
+        if (n == self or n_id == -1 or n == -1):
+            return d
+
+        --sendreq
+        send(GetMyKeys(n_id), n)
+
+
+        --reply
+        await (any(a1 for a1 in received(YourKeys(a1))))
+
+        --returnfingers
+        f = list(received(YourKeys(a1)))[0]
+
+        if (f != -1):
+            d.update(f)
+            print(d)
+
+        purge_received()
+        return d
+
+class Visual(DistProcess):
+    def setup(ps, m):
+        proclist = ps
+
+    def main():
+        print("Visual started\n")
+
+        while True:
+            await (any(a1 for a1 in received(TestCallback(a1))))
+            purge_received()
+            pass
+
+    def OnTestCallback():
+        print("Visual: TestCallback")
+
+
+
+#Start running chord algorithm. Create num_procs number of processes,
+#each of which act as a node in the chord ring. Create a seperate process
+#for driver program which runs the test case. Also, we need a sepearate
+#process for visualization
+def run_chord(m):
+    use_channel("tcp")
+    for i in range(m, 0, -1):
+        print("i = " + str(i))
+    #Create nodes for the chord ring
+    ps = createprocs(ChordNode, int(math.pow(2, m)))
+    print("procs = ps" + str(ps))
+ 
+    #Create a process for visualization
+    use_channel("tcp")
+    visual = createprocs(Visual, 1)
+    setupprocs(visual, [ps, m])
+    startprocs(visual)
+
+    #Create a process for driver
+    use_channel("tcp")
+    driver = createprocs(Driver, 1)
+    setupprocs(driver, [ps, visual, m])
+ 
+    #Setup chord nodes
+    proc_id = 0
+    for p in ps:
+        #print("setup procs p = " + str(p) + " other procs = " + str(ps-{p}) + " driver = " + str(driver))
+        setupprocs({p}, [ps-{p}, driver, visual, m])
+        proc_id = proc_id + 1
+    startprocs(ps)
+
+    #Start the driver process at the end
+    startprocs(driver)
+
+    #Wait for all joins
+    for p in ps: p.join()
+    driver.join()
+    visual.join()
+
+def main():
+    if len(sys.argv) != 2:
+        print("Error. Enter value of m signifying num of entries in finger table")
+        exit(0)
+
+    np = int(sys.argv[1])
+
+    run_chord(np)
