@@ -3,6 +3,7 @@ import copy
 import time
 import math
 import hashlib
+import time
 
 #A node in the successor list
 class Node:
@@ -217,18 +218,11 @@ class ChordNode(DistProcess):
             if (is_alive == 1):
                 if (needs_join == True):
                     join_ring()
-                    #output("Calling stabilize")
-                #print_fingers(proc_id)
                 Stabilize()
-                #print_fingers(proc_id)
                 fix_fingers()
-                #print_fingers(proc_id)
-                #await(False)
-                check_dead_nodes()
+                check_predecessors()
                 if i == 1000:
                         print("------Node:(%s ,%s)  Successor:(%s ,%s)  Predecessor:(%s,%s)-----\n" % (str(self), str(proc_id), str(successor.node), str(successor.id), str(predecessor.node), str(predecessor.id)))
-                        #await(False)
-#                print_fingers(4)
             else:
                 --nothingtodo
                 pass
@@ -236,7 +230,6 @@ class ChordNode(DistProcess):
 
     #Lookup for a (key,value) pair in the ring.
     def OnFindKey(key, node_id, org):
-        print("In find key node_id=%s  procid=%s\n" % (str(node_id), str(proc_id)))
 
         if (between(predecessor.id, node_id, proc_id) == True or node_id == proc_id):
             if key in kv_store:
@@ -249,8 +242,6 @@ class ChordNode(DistProcess):
             if (between(finger[i].int_start, node_id, finger[i].int_end) == True or node_id == finger[i].int_start):
                 succ_diff = abs(node_id - finger[i].cnode.id)
                 pred_diff = abs(node_id - finger[i].pnode.id)
-                output("node_id =" + str(node_id) + "succ_diff " + str(succ_diff) + "pred_diff " + str(pred_diff))
-                #await(False)
                 if(succ_diff <= pred_diff): 
                         send(FindKey(key, node_id, org), finger[i].cnode.node)
                 else:
@@ -262,7 +253,6 @@ class ChordNode(DistProcess):
 
     #Insert a (key, value) pair in the ring
     def OnInsertKey(key, val, node_id, org):
-        #print("In insert key node_id=%s  procid=%s\n" % (str(node_id), str(proc_id)))
 
         #If this node is not yet joined, search the key in the node succeeding this node.
         #If the key belongs to this node, then just insert it.
@@ -282,12 +272,10 @@ class ChordNode(DistProcess):
 
     #Signal from the driver to indicate node failure
     def OnKillNode():
-        print("I am getting killed proc_id%s\n" % ((str(proc_id))))
         is_alive = -1
 
     #Signal from the driver that the node is live back again
     def OnRecoverNode():
-        print("I am getting recovered proc_id%s\n" % ((str(proc_id))))
         is_alive = 1
         needs_join = True
 
@@ -355,7 +343,6 @@ class ChordNode(DistProcess):
     def OnPrintFingers():
         for i in range(1,m+1):
             if(proc_id == 0 or proc_id == 10 or proc_id == 19):
-           	#output("received print finger from driver")
             	output("proc id = " + str(proc_id) + "finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id) + " predecessor = " + str(finger[i].pnode) + "pred id = " + str(finger[i].pnode.id))
 
 
@@ -369,27 +356,17 @@ class ChordNode(DistProcess):
         # Why do we need finger for all nodes when only few nodes have joined
         for i in range(1, m+1):
             finger[i] = Finger((int(math.pow(2, i-1)) + proc_id)%max, (int(math.pow(2, i-1)) + proc_id)%max, (int(math.pow(2, i)) + proc_id) %max, proc_id)
-            #print(str(finger['cnode']))
-            #output("finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id))
-            #output("finger = " + str(finger[i].cnode))
-        #print_fingers(procid)
-        #for p in finger:
-            #output("in init node. finger of " + str(p.cnode))
+            rev_finger[i] = Finger((proc_id - int(math.pow(2, i-1)))%max, (proc_id - int(math.pow(2, i-1)))%max, (proc_id - int(math.pow(2, i))) %max, proc_id)
+    
     #Join the chord ring.
     def join_ring():
         if proc_id != 0:
-            # Doubt. Why are we again initializing pred = -1 here??. When a node is killed this is needed
             predecessor = Node(-1, -1)
-            #output("predecessor = " + str(predecessor))
             --start
-            #output("joining ring before sending rpc")
             successor = rpc_find_successor(helper, proc_id, 0)
-            print("proc id = " + str(proc_id) + "successor = " + str(successor))
 
             my_keys = rpc_get_my_keys(successor.node, proc_id)
             kv_store.update(my_keys)
-            #print("New keys:")
-            #print(kv_store)
         else:
             successor = Node(self, 0)
             predecessor = Node(self, 0)
@@ -402,54 +379,33 @@ class ChordNode(DistProcess):
                 for i in range(1, m+1):
                         output("finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id))
 
-    #Print the successor list corresponding to id
-    def print_successor_list(id):
-        if proc_id == id:
-            print("\n")
-            for i in range(0, max_succ):
-                print("Node %s: succ_list[%s].id = %s" % (str(id), str(i), str(succ_list[i].id)))
-
-    #Update/populate "max_succ" number of successors for this node
     def update_successor_list():
-        #output("in update successor list " + str(successor))
         s = successor
         for i in range(0, max_succ):
             if s.id != proc_id and s.id != -1:
-                #output("getting successors for " + str(s.node))                
                 s = rpc_find_successor(s.node, proc_id, 1)
             succ_list[i] = s
 
-    #Update/populate "max_succ" number of successors for this node
     def update_predecessor_list():
-        #output("in update successor list " + str(successor))
         s = predecessor
         for i in range(0, max_pred):
             if s.id != proc_id and s.id != -1:
-                #output("getting successors for " + str(s.node))
                 s = rpc_find_predecessor(s.node, proc_id, 1)
             pred_list[i] = s
 
 
-
-
-    #Check if node's predecessor or successor is dead. Change the predecessor and successor
-    #to skip this node. Basically, remove the dead node from the ring. This function is
-    #called priodically.
-    def check_dead_nodes():
-        if (predecessor.node != -1 and predecessor.node != self and rpc_is_node_alive(predecessor.node) != 1):
-            print("Predecessor %s of %s is dead" % ((str(predecessor.id), str(proc_id))))
-            predecessor = Node(-1, -1)
-
-        if (successor.node != -1 and successor.node != self and rpc_is_node_alive(successor.node) != 1):
-            print("Successor %s of %s is dead" % ((str(successor.id), str(proc_id))))
-            successor = next_live_successor()
-
-    #Find the next live successor from the successor list of the node. This is needed
-    #when a successor of node is dead and it needs to point to next successor.
     def next_live_successor():
         for i in range(0, max_succ):
             if (succ_list[i].node == -1 or succ_list[i].node == self or rpc_is_node_alive(succ_list[i].node) == 1):
                 return succ_list[i]
+
+        return Node(-1, -1)
+
+
+    def next_live_predecessor():
+        for i in range(0, max_succ):
+            if (pred_list[i].node == -1 or pred_list[i].node == self or rpc_is_node_alive(pred_list[i].node) == 1):
+                return pred_list[i]
 
         return Node(-1, -1)
 
@@ -484,12 +440,8 @@ class ChordNode(DistProcess):
 
     #This function is called periodically by each node to stablize the ring
     def Stabilize():
-        #print("proc_id " + str(proc_id) + "sending req to successor " + str(successor.node))
         pred = rpc_find_predecessor(successor.node, proc_id, 1)
-        #output("prd = " + str(pred))
-
         if (pred.id != -1 and between(proc_id, pred.id, successor.id) == True):
-            #output("aaha. hitting the loop")
             successor = pred
 
         --notify
@@ -535,6 +487,17 @@ class ChordNode(DistProcess):
         purge_received()
 
         return s
+
+    def check_predecessors():
+        if (predecessor.node != -1 and predecessor.node != self and rpc_is_node_alive(predecessor.node) != 1):
+            print("Predecessor %s of %s is dead" % ((str(predecessor.id), str(proc_id))))
+            predecessor = Node(-1, -1)
+
+    def check_successors():
+        if (predecessor.node != -1 and predecessor.node != self and rpc_is_node_alive(predecessor.node) != 1):
+            print("Predecessor %s of %s is dead" % ((str(predecessor.id), str(proc_id))))
+            predecessor = Node(-1, -1)
+
 
 
     #RPC to get keys from successor between node's id to successor's id
@@ -588,6 +551,7 @@ def run_chord(m):
     for i in range(m, 0, -1):
         print("i = " + str(i))
     #Create nodes for the chord ring
+    time_taken = 0
     ps = createprocs(ChordNode, int(math.pow(2, m)))
     print("procs = ps" + str(ps))
  
@@ -615,6 +579,8 @@ def run_chord(m):
 
     #Wait for all joins
     for p in ps: p.join()
+    time_taken = time.clock()
+    print("time taken is " + str(time_taken))
     driver.join()
     visual.join()
 
@@ -624,5 +590,5 @@ def main():
         exit(0)
 
     np = int(sys.argv[1])
-
+    time_taken = time.clock()
     run_chord(np)
