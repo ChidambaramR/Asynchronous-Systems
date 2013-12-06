@@ -101,12 +101,7 @@ class Driver(DistProcess):
         	#WARNING: id should not collide with existing id. Undefined behavior if that happens.
 
         	--joinnode
-        	# output("p =" + str(p) + "ps = " + str(ps) + "[0] = " + str(list(ps)[0]))
-        	# p is the 1st node in the list. ps is the integer id of the node. ps[0] is the object corresponding to that node
-        	#Join rest of the nodes
-        	# output("Node %s is joining the ring\n" % (str(procid)))
-        	if(procid == 0 or procid == 10 or procid == 19):
-        		node_join(p, procid, list(ps)[0])
+        	node_join(p, procid, list(ps)[0])
 
         	#Wait for each node to stabilize
         	time.sleep(1)
@@ -188,6 +183,7 @@ class ChordNode(DistProcess):
         helper = -1
         proclist = ps
         finger = dict()
+        rev_finger = dict()
         kv_store = dict()
         is_alive = 1
         max_succ = int(math.pow(2, m))
@@ -342,8 +338,7 @@ class ChordNode(DistProcess):
 
     def OnPrintFingers():
         for i in range(1,m+1):
-            if(proc_id == 0 or proc_id == 10 or proc_id == 19):
-            	output("proc id = " + str(proc_id) + "finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id) + " predecessor = " + str(finger[i].pnode) + "pred id = " + str(finger[i].pnode.id))
+            output("proc id = " + str(proc_id) + "finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id) + " predecessor = " + str(finger[i].pnode) + "pred id = " + str(finger[i].pnode.id))
 
 
     #Initialize the node
