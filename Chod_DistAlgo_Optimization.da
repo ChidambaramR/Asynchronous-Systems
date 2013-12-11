@@ -92,6 +92,8 @@ class Driver(DistProcess):
     def main():
         procid = 0
         unstarted_proc = 0
+        time_taken = time.clock()
+        print("time taken is " + str(time_taken))
         for p in ps:
         	if procid == 6:
         		procid = procid + 1
@@ -106,6 +108,8 @@ class Driver(DistProcess):
         	#Wait for each node to stabilize
         	time.sleep(1)
         	procid = procid + 1
+        time_taken = time.clock()
+        print("time taken is " + str(time_taken))
 
         ##################################################
         #Kill node 4
@@ -216,9 +220,8 @@ class ChordNode(DistProcess):
                     join_ring()
                 Stabilize()
                 fix_fingers()
+                check_successors()
                 check_predecessors()
-                if i == 1000:
-                        print("------Node:(%s ,%s)  Successor:(%s ,%s)  Predecessor:(%s,%s)-----\n" % (str(self), str(proc_id), str(successor.node), str(successor.id), str(predecessor.node), str(predecessor.id)))
             else:
                 --nothingtodo
                 pass
@@ -238,10 +241,13 @@ class ChordNode(DistProcess):
             if (between(finger[i].int_start, node_id, finger[i].int_end) == True or node_id == finger[i].int_start):
                 succ_diff = abs(node_id - finger[i].cnode.id)
                 pred_diff = abs(node_id - finger[i].pnode.id)
-                if(succ_diff <= pred_diff): 
-                        send(FindKey(key, node_id, org), finger[i].cnode.node)
-                else:
+                succ_len = len(succ_list)
+                pred_len = len(pred_list)
+                if((pred_diff <= succ_diff) and (pred_len < succ_len)):
+                        output("Choosing Predecessor as " + str(node_id) + "is lesser than " + str(finger[i].cnode.id)) 
                         send(FindKey(key, node_id, org), finger[i].pnode.node)
+                else:
+                        send(FindKey(key, node_id, org), finger[i].cnode.node)
                 return
 
         send(Value(-1), org)
@@ -252,7 +258,6 @@ class ChordNode(DistProcess):
 
         #If this node is not yet joined, search the key in the node succeeding this node.
         #If the key belongs to this node, then just insert it.
-        # output("predecessor id = " + str(predecessor.id) + " node_id = " + str(node_id) + " proc_id = " + str(proc_id))
         if (between(predecessor.id, node_id, proc_id) == True or node_id == proc_id):
             kv_store[key] = val
             send(ReturnValue(True), org)
@@ -337,8 +342,10 @@ class ChordNode(DistProcess):
             predecessor = Node(_source, id)
 
     def OnPrintFingers():
-        for i in range(1,m+1):
-            output("proc id = " + str(proc_id) + "finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id) + " predecessor = " + str(finger[i].pnode) + "pred id = " + str(finger[i].pnode.id))
+       for i in range(1,m):
+                if(proc_id == 6):
+                        continue
+                #output("proc id = " + str(proc_id) + "finger of " + str(i)))
 
 
     #Initialize the node
@@ -367,12 +374,6 @@ class ChordNode(DistProcess):
             predecessor = Node(self, 0)
 
         needs_join = False
-
-    #Print the finger table entries corresponding to id
-    def print_fingers(id):
-        if proc_id == id or proc_id == 10 or proc_id == 19:
-                for i in range(1, m+1):
-                        output("finger of " + str(i) + str("Finger:") + str(finger[i].parent) + ", " + str(finger[i].start) + ", " + str(finger[i].int_start) + ", " + str(finger[i].int_end) + ", " + str(finger[i].cnode) + ", " +  str(finger[i].cnode.id))
 
     def update_successor_list():
         s = successor
@@ -408,6 +409,7 @@ class ChordNode(DistProcess):
     def fix_fingers():
         for i in range(1, m+1):
             #output("sending succ for " + str(finger[i].start))
+            #output("sending pred for " + str(rev_finger[i].start))
             finger[i].cnode = rpc_find_successor(helper, finger[i].start, 0)
             finger[i].pnode = rpc_find_predecessor(helper, finger[i].start, 0)
 
@@ -543,8 +545,6 @@ class Visual(DistProcess):
 #process for visualization
 def run_chord(m):
     use_channel("tcp")
-    for i in range(m, 0, -1):
-        print("i = " + str(i))
     #Create nodes for the chord ring
     time_taken = 0
     ps = createprocs(ChordNode, int(math.pow(2, m)))
@@ -564,18 +564,17 @@ def run_chord(m):
     #Setup chord nodes
     proc_id = 0
     for p in ps:
-        #print("setup procs p = " + str(p) + " other procs = " + str(ps-{p}) + " driver = " + str(driver))
         setupprocs({p}, [ps-{p}, driver, visual, m])
         proc_id = proc_id + 1
     startprocs(ps)
 
+    time_taken = time.clock()
+    print("time taken is " + str(time_taken))
     #Start the driver process at the end
     startprocs(driver)
 
     #Wait for all joins
     for p in ps: p.join()
-    time_taken = time.clock()
-    print("time taken is " + str(time_taken))
     driver.join()
     visual.join()
 
