@@ -411,7 +411,9 @@ class ChordNode(DistProcess):
             #output("sending succ for " + str(finger[i].start))
             #output("sending pred for " + str(rev_finger[i].start))
             finger[i].cnode = rpc_find_successor(helper, finger[i].start, 0)
-            finger[i].pnode = rpc_find_predecessor(helper, finger[i].start, 0)
+            finger[i].pnode = rpc_find_successor(helper, finger[i].start, 0)
+            rev_finger[i].cnode = rpc_find_predecessor(helper, rev_finger[i].start, 0)
+            rev_finger[i].pnode = rpc_find_predecessor(helper, rev_finger[i].start, 0)
 
     #Find the next preceding node corresponding to 'id'
     def closest_preceding_node(id):
