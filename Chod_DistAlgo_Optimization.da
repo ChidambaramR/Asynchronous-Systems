@@ -243,8 +243,8 @@ class ChordNode(DistProcess):
                 pred_diff = abs(node_id - finger[i].pnode.id)
                 succ_len = len(succ_list)
                 pred_len = len(pred_list)
-                if((pred_diff <= succ_diff) and (pred_len < succ_len)):
-                        output("Choosing Predecessor as " + str(node_id) + "is lesser than " + str(finger[i].cnode.id)) 
+                if((pred_diff <= succ_diff) or (pred_len < succ_len)):
+                        output("Choosing Predecessor as " + str(finger[i].cnode.id) + "is lesser than " + str(node_id)) 
                         send(FindKey(key, node_id, org), finger[i].pnode.node)
                 else:
                         send(FindKey(key, node_id, org), finger[i].cnode.node)
